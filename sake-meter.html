@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>酔いメーター</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=Kaisei+Opti:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#0d0d14; --surface:#161622; --surface2:#1e1e2e;
+  --border:rgba(255,255,255,0.08); --text:#e8e6f0; --text-muted:#7a788a;
+  --accent:#c9a85c; --accent-glow:rgba(201,168,92,0.3);
+  --sober:#4caf7d; --horoyoi:#f0c040; --yopparai:#f07a30; --meitei:#e04060; --deisui:#a020f0;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;}
+body::before{content:'';position:fixed;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");pointer-events:none;z-index:0;}
+.app{position:relative;z-index:1;max-width:480px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;}
+
+header{padding:16px 20px 12px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);}
+.logo{font-family:'Kaisei Opti',serif;font-size:20px;color:var(--accent);letter-spacing:.05em;text-shadow:0 0 20px var(--accent-glow);}
+.date-display{font-size:11px;color:var(--text-muted);text-align:right;line-height:1.5;}
+
+.nav-tabs{display:flex;background:var(--surface);border-bottom:1px solid var(--border);}
+.nav-tab{flex:1;padding:10px 2px;background:none;border:none;color:var(--text-muted);font-family:'Noto Sans JP',sans-serif;font-size:11px;cursor:pointer;transition:all .2s;border-bottom:2px solid transparent;}
+.nav-tab.active{color:var(--accent);border-bottom-color:var(--accent);}
+
+.main{flex:1;overflow-y:auto;padding:14px;}
+
+.meter-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:18px;margin-bottom:14px;position:relative;overflow:hidden;}
+.meter-card::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--accent),transparent);}
+.meter-label{font-size:10px;color:var(--text-muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;}
+.drunk-status{font-family:'Kaisei Opti',serif;font-size:26px;font-weight:700;margin-bottom:3px;transition:color .5s;}
+.drunk-subtitle{font-size:11px;color:var(--text-muted);margin-bottom:14px;}
+.gauge-track{height:12px;background:rgba(255,255,255,0.06);border-radius:99px;overflow:visible;position:relative;margin-bottom:6px;}
+.gauge-fill{height:100%;border-radius:99px;transition:width .6s cubic-bezier(.34,1.56,.64,1),background .5s;position:relative;}
+.gauge-fill::after{content:'';position:absolute;right:-2px;top:50%;transform:translateY(-50%);width:16px;height:16px;border-radius:50%;background:white;box-shadow:0 0 8px rgba(255,255,255,.6);}
+.gauge-ticks{display:flex;justify-content:space-between;margin-top:3px;padding:0 2px;}
+.gauge-tick{font-size:8px;color:var(--text-muted);text-align:center;flex:1;}
+.alcohol-summary{display:flex;gap:10px;margin-top:12px;}
+.summary-item{flex:1;background:rgba(255,255,255,0.04);border-radius:10px;padding:9px;text-align:center;}
+.summary-value{font-size:18px;font-weight:700;color:var(--accent);}
+.summary-unit{font-size:9px;color:var(--text-muted);margin-top:2px;}
+
+.stages-row{display:flex;gap:5px;margin-bottom:14px;}
+.stage-chip{flex:1;padding:7px 3px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);text-align:center;font-size:9px;transition:all .3s;opacity:.35;}
+.stage-chip.active{opacity:1;border-color:currentColor;box-shadow:0 0 10px currentColor;}
+.stage-chip.passed{opacity:.65;}
+.stage-chip .emo{font-size:15px;display:block;margin-bottom:2px;}
+
+.section-title{font-size:10px;color:var(--text-muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:9px;}
+
+.drinks-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:9px;margin-bottom:18px;}
+.drink-btn{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:13px 11px;cursor:pointer;transition:all .15s;text-align:left;position:relative;overflow:hidden;}
+.drink-btn:active{transform:scale(0.96);border-color:var(--accent);background:rgba(201,168,92,0.08);}
+.drink-btn::after{content:'';position:absolute;inset:0;border-radius:14px;background:radial-gradient(circle at center,rgba(201,168,92,0.15),transparent);opacity:0;transition:opacity .3s;}
+.drink-btn.ripple::after{opacity:1;}
+.drink-emoji{font-size:24px;margin-bottom:5px;}
+.drink-name{font-size:12px;font-weight:500;color:var(--text);}
+.drink-alcohol{font-size:10px;color:var(--text-muted);margin-top:2px;}
+
+/* CALENDAR */
+.cal-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+.cal-nav-btn{background:none;border:1px solid var(--border);color:var(--text);font-size:18px;width:36px;height:36px;border-radius:9px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;}
+.cal-nav-btn:hover{border-color:var(--accent);color:var(--accent);}
+.cal-month-label{font-family:'Kaisei Opti',serif;font-size:18px;color:var(--accent);}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:14px;}
+.cal-dow{font-size:9px;color:var(--text-muted);text-align:center;padding:4px 0;}
+.cal-day{aspect-ratio:1;border-radius:9px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;border:1px solid transparent;transition:all .15s;min-height:36px;}
+.cal-day:hover:not(.empty){background:rgba(255,255,255,0.04);}
+.cal-day.today{border-color:var(--accent);}
+.cal-day.selected{background:rgba(201,168,92,0.12);border-color:var(--accent);}
+.cal-day.empty{pointer-events:none;}
+.cal-day-num{font-size:12px;font-weight:500;}
+.cal-day.today .cal-day-num{color:var(--accent);}
+.cal-day-dot{width:5px;height:5px;border-radius:50%;margin-top:2px;}
+.cal-detail{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;position:relative;overflow:hidden;}
+.cal-detail::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--accent),transparent);}
+.cal-detail-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+.cal-detail-date{font-size:12px;color:var(--text-muted);}
+.cal-detail-status{font-family:'Kaisei Opti',serif;font-size:17px;}
+.cal-bar{height:7px;background:rgba(255,255,255,0.05);border-radius:99px;overflow:hidden;margin-bottom:12px;}
+.cal-bar-fill{height:100%;border-radius:99px;}
+.cal-log-row{display:flex;align-items:center;gap:8px;font-size:12px;padding:7px 10px;background:rgba(255,255,255,0.03);border-radius:8px;margin-bottom:4px;}
+.cal-log-time{color:var(--text-muted);font-size:10px;width:38px;flex-shrink:0;}
+.cal-log-name{flex:1;}
+.cal-log-alc{color:var(--accent);font-size:11px;font-weight:700;}
+
+/* HISTORY */
+.history-list{display:flex;flex-direction:column;gap:7px;}
+.history-item{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:11px 13px;display:flex;align-items:center;gap:11px;animation:slideIn .3s ease;}
+@keyframes slideIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+.history-emoji{font-size:20px;}
+.history-info{flex:1;}
+.history-name{font-size:13px;font-weight:500;}
+.history-time{font-size:10px;color:var(--text-muted);}
+.history-alcohol{font-size:12px;color:var(--accent);font-weight:700;}
+.history-delete{background:none;border:none;color:var(--text-muted);font-size:16px;cursor:pointer;padding:4px;border-radius:6px;transition:color .2s;}
+.history-delete:hover{color:var(--meitei);}
+.reset-btn{width:100%;padding:11px;background:none;border:1px dashed rgba(255,255,255,0.1);border-radius:12px;color:var(--text-muted);font-family:'Noto Sans JP',sans-serif;font-size:13px;cursor:pointer;margin-top:10px;transition:all .2s;}
+.reset-btn:hover{border-color:var(--meitei);color:var(--meitei);}
+
+/* SETTINGS */
+.settings-section{margin-bottom:22px;}
+.settings-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;}
+.setting-row{padding:13px 15px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:11px;}
+.setting-row:last-child{border-bottom:none;}
+.setting-info{flex:1;}
+.setting-label{font-size:14px;font-weight:500;}
+.setting-desc{font-size:10px;color:var(--text-muted);margin-top:2px;}
+.setting-input{width:72px;background:rgba(255,255,255,0.06);border:1px solid var(--border);border-radius:8px;padding:5px 9px;color:var(--text);font-family:'Noto Sans JP',sans-serif;font-size:14px;text-align:right;}
+.setting-input:focus{outline:none;border-color:var(--accent);}
+
+.drink-editor{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;}
+.drink-editor-row{padding:11px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:9px;}
+.drink-editor-row:last-child{border-bottom:none;}
+.drink-editor-emoji{font-size:19px;width:28px;text-align:center;}
+.drink-editor-info{flex:1;}
+.drink-editor-name{font-size:12px;font-weight:500;}
+.drink-editor-sub{font-size:10px;color:var(--text-muted);}
+.edit-input{width:56px;background:rgba(255,255,255,0.06);border:1px solid var(--border);border-radius:6px;padding:4px 7px;color:var(--text);font-family:'Noto Sans JP',sans-serif;font-size:12px;text-align:right;}
+.edit-input:focus{outline:none;border-color:var(--accent);}
+.drink-del-btn{background:none;border:none;color:var(--text-muted);font-size:15px;cursor:pointer;padding:3px 5px;border-radius:5px;transition:color .2s;}
+.drink-del-btn:hover{color:var(--meitei);}
+
+.add-drink-form{background:var(--surface);border:1px solid var(--accent);border-radius:14px;padding:16px;margin-top:10px;}
+.form-title{font-size:12px;color:var(--accent);margin-bottom:14px;font-weight:600;letter-spacing:.05em;}
+.form-row{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+.form-label{font-size:11px;color:var(--text-muted);width:68px;flex-shrink:0;}
+.form-input{flex:1;background:rgba(255,255,255,0.06);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-family:'Noto Sans JP',sans-serif;font-size:13px;}
+.form-input:focus{outline:none;border-color:var(--accent);}
+.emoji-picker{display:flex;flex-wrap:wrap;gap:5px;}
+.emoji-opt{font-size:22px;padding:4px 5px;border-radius:8px;cursor:pointer;border:2px solid transparent;transition:all .15s;}
+.emoji-opt.selected{border-color:var(--accent);background:rgba(201,168,92,0.15);}
+.form-btns{display:flex;gap:8px;margin-top:4px;}
+.btn-primary{flex:1;padding:11px;background:linear-gradient(135deg,#c9a85c,#a07830);border:none;border-radius:10px;color:#1a1208;font-family:'Noto Sans JP',sans-serif;font-size:13px;font-weight:700;cursor:pointer;transition:transform .15s;box-shadow:0 3px 12px rgba(201,168,92,.3);}
+.btn-primary:active{transform:scale(.97);}
+.btn-secondary{flex:1;padding:11px;background:none;border:1px solid var(--border);border-radius:10px;color:var(--text-muted);font-family:'Noto Sans JP',sans-serif;font-size:13px;cursor:pointer;}
+
+.save-btn{width:100%;padding:13px;background:linear-gradient(135deg,#c9a85c,#a07830);border:none;border-radius:12px;color:#1a1208;font-family:'Noto Sans JP',sans-serif;font-size:14px;font-weight:700;cursor:pointer;margin-top:10px;transition:transform .15s;box-shadow:0 4px 16px rgba(201,168,92,.3);}
+.save-btn:active{transform:scale(.98);}
+.add-btn-row{width:100%;padding:12px;background:none;border:1px dashed rgba(201,168,92,.4);border-radius:12px;color:var(--accent);font-family:'Noto Sans JP',sans-serif;font-size:13px;cursor:pointer;margin-top:8px;transition:all .2s;}
+.add-btn-row:hover{background:rgba(201,168,92,.06);}
+
+.empty-state{text-align:center;padding:28px 14px;color:var(--text-muted);font-size:12px;}
+.empty-state .emo{font-size:36px;margin-bottom:7px;}
+.note-text{font-size:10px;color:var(--text-muted);line-height:1.7;padding:10px 12px;background:rgba(255,255,255,.03);border-radius:10px;margin-top:8px;}
+
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--surface2);border:1px solid var(--accent);border-radius:99px;padding:9px 18px;font-size:12px;color:var(--accent);transition:transform .3s cubic-bezier(.34,1.56,.64,1);z-index:100;white-space:nowrap;box-shadow:0 4px 20px rgba(0,0,0,.5);}
+.toast.show{transform:translateX(-50%) translateY(0);}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="logo">🍶 酔いメーター</div>
+    <div class="date-display" id="dateDisplay"></div>
+  </header>
+  <div class="nav-tabs">
+    <button class="nav-tab active" onclick="showTab('home')">🏠 ホーム</button>
+    <button class="nav-tab" onclick="showTab('calendar')">📅 カレンダー</button>
+    <button class="nav-tab" onclick="showTab('history')">📋 記録</button>
+    <button class="nav-tab" onclick="showTab('settings')">⚙️ 設定</button>
+  </div>
+
+  <!-- ===== HOME ===== -->
+  <div class="main" id="tab-home">
+    <div class="meter-card">
+      <div class="meter-label">現在の酔い具合</div>
+      <div class="drunk-status" id="drunkStatus">シラフ</div>
+      <div class="drunk-subtitle" id="drunkSubtitle">今日はまだ飲んでいません</div>
+      <div class="gauge-track"><div class="gauge-fill" id="gaugeFill" style="width:0%"></div></div>
+      <div class="gauge-ticks">
+        <div class="gauge-tick">シラフ</div>
+        <div class="gauge-tick">ほろ酔</div>
+        <div class="gauge-tick">酔っ払</div>
+        <div class="gauge-tick">酩酊</div>
+        <div class="gauge-tick">泥酔</div>
+      </div>
+      <div class="alcohol-summary">
+        <div class="summary-item"><div class="summary-value" id="totalAlcohol">0</div><div class="summary-unit">g アルコール</div></div>
+        <div class="summary-item"><div class="summary-value" id="totalDrinks">0</div><div class="summary-unit">杯</div></div>
+        <div class="summary-item"><div class="summary-value" id="percentFull">0%</div><div class="summary-unit">限界まで</div></div>
+      </div>
+    </div>
+    <div class="stages-row" id="stagesRow"></div>
+    <div class="section-title">飲み物を追加</div>
+    <div class="drinks-grid" id="drinksGrid"></div>
+  </div>
+
+  <!-- ===== CALENDAR ===== -->
+  <div class="main" id="tab-calendar" style="display:none">
+    <div class="cal-nav">
+      <button class="cal-nav-btn" onclick="calPrev()">‹</button>
+      <div class="cal-month-label" id="calMonthLabel"></div>
+      <button class="cal-nav-btn" onclick="calNext()">›</button>
+    </div>
+    <div class="cal-grid" id="calGrid"></div>
+    <div id="calDetail"></div>
+  </div>
+
+  <!-- ===== HISTORY ===== -->
+  <div class="main" id="tab-history" style="display:none">
+    <div class="section-title">今日の記録</div>
+    <div class="history-list" id="historyList"></div>
+    <button class="reset-btn" onclick="confirmReset()">🗑 今日の記録をリセット</button>
+  </div>
+
+  <!-- ===== SETTINGS ===== -->
+  <div class="main" id="tab-settings" style="display:none">
+    <div class="settings-section">
+      <div class="section-title">アルコール限界量の設定</div>
+      <div class="settings-card" id="thresholdSettings"></div>
+      <button class="save-btn" onclick="saveSettings()">設定を保存</button>
+    </div>
+    <div class="settings-section">
+      <div class="section-title">お酒の種類</div>
+      <div class="drink-editor" id="drinkEditor"></div>
+      <button class="add-btn-row" id="toggleAddBtn" onclick="toggleAddForm()">＋ 新しいお酒を追加</button>
+      <div class="add-drink-form" id="addDrinkForm" style="display:none">
+        <div class="form-title">🆕 新しいお酒を登録</div>
+        <div class="form-row" style="align-items:flex-start;flex-wrap:wrap">
+          <div class="form-label" style="padding-top:4px">絵文字</div>
+          <div class="emoji-picker" id="emojiPicker"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-label">名前</div>
+          <input class="form-input" id="newDrinkName" placeholder="例：梅酒ロック" maxlength="20">
+        </div>
+        <div class="form-row">
+          <div class="form-label">量 (ml)</div>
+          <input class="form-input" id="newDrinkMl" type="number" placeholder="例：150" min="10" max="2000">
+        </div>
+        <div class="form-row">
+          <div class="form-label">度数 (%)</div>
+          <input class="form-input" id="newDrinkPct" type="number" placeholder="例：12" min="0.1" max="99" step="0.1">
+        </div>
+        <div class="form-btns">
+          <button class="btn-secondary" onclick="toggleAddForm()">キャンセル</button>
+          <button class="btn-primary" onclick="submitNewDrink()">追加する</button>
+        </div>
+      </div>
+    </div>
+    <div class="note-text">
+      ※ 閾値は厚生労働省・アルコール健康医学協会のデータに基づく<strong style="color:var(--accent)">体重60kgの一般男性</strong>の目安値です。<br>
+      ※ 体重・体質・空腹状態により大きく個人差があります。<br>
+      ※ データはブラウザのローカルストレージに保存されます。<br>
+      ※ 飲酒運転は絶対にしないでください。
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ==============================
+//  DEFAULTS
+// ==============================
+const DEFAULT_DRINKS = [
+  // ビール系
+  {id:1, emoji:'🍺',name:'ビール 小ジョッキ',    ml:300, pct:5},   // 約12g
+  {id:2, emoji:'🍺',name:'ビール 中ジョッキ',    ml:500, pct:5},   // 約20g
+  {id:3, emoji:'🍺',name:'ビール 大ジョッキ',    ml:700, pct:5},   // 約28g
+  {id:4, emoji:'🍺',name:'ビール 缶350ml',      ml:350, pct:5},   // 約14g
+  {id:5, emoji:'🍺',name:'ビール 缶500ml',      ml:500, pct:5},   // 約20g
+  // サワー・チューハイ系
+  {id:6, emoji:'🍋',name:'レモンサワー',          ml:350, pct:5},   // 約14g
+  {id:7, emoji:'🍸',name:'チューハイ 缶350ml',   ml:350, pct:5},   // 約14g
+  {id:8, emoji:'🍸',name:'ストロング系 缶350ml', ml:350, pct:9},   // 約25g ※要注意
+  // ハイボール・ウイスキー系
+  // ウイスキーはシングル=30ml、ダブル=60ml（日本標準）、度数40%
+  {id:9, emoji:'🥃',name:'ハイボール（標準）',    ml:350, pct:7},   // ウイスキー30ml+炭酸 約20g
+  {id:10,emoji:'🥃',name:'ウイスキー ロック',     ml:30,  pct:40},  // シングル30ml 約10g
+  {id:11,emoji:'🥃',name:'ウイスキー ダブル',     ml:60,  pct:40},  // ダブル60ml 約19g
+  {id:12,emoji:'🥃',name:'ウイスキー 水割り',     ml:180, pct:13},  // ウイスキー30ml+水150ml 約19g
+  // 焼酎系（25度換算）
+  {id:13,emoji:'🍶',name:'焼酎 ロック',           ml:100, pct:25},  // 標準的な1杯 約20g
+  {id:14,emoji:'🍶',name:'焼酎 水割り',           ml:200, pct:12},  // 焼酎50ml+水150ml 約19g
+  {id:15,emoji:'🍶',name:'焼酎 お湯割り',         ml:200, pct:12},  // 焼酎50ml+お湯150ml 約19g
+  // 日本酒・ワイン系
+  {id:16,emoji:'🍶',name:'日本酒 1合',            ml:180, pct:15},  // 約22g
+  {id:17,emoji:'🍷',name:'ワイン グラス',          ml:150, pct:12},  // 約14g
+  {id:18,emoji:'🥂',name:'スパークリング グラス',  ml:120, pct:11},  // 約11g
+  // カクテル系
+  // ショートカクテル：スピリッツ45ml+リキュール等、仕上がり約90ml、度数約20〜25%
+  {id:19,emoji:'🍸',name:'ショートカクテル',       ml:90,  pct:22},  // 約16g
+  // ロングカクテル：スピリッツ30〜45ml+ミックス、仕上がり250ml前後、度数約8〜10%
+  {id:20,emoji:'🍹',name:'ロングカクテル',         ml:250, pct:8},   // 約16g
+  {id:21,emoji:'🍹',name:'サングリア グラス',      ml:200, pct:8},   // 約13g
+  // その他
+  {id:22,emoji:'🍾',name:'シャンパン グラス',      ml:120, pct:12},  // 約12g
+  {id:23,emoji:'🥃',name:'ブランデー シングル',    ml:30,  pct:40},  // 約10g
+  {id:24,emoji:'🫗',name:'梅酒 ロック',            ml:90,  pct:13},  // 約9g
+  {id:25,emoji:'🍵',name:'紹興酒 グラス',          ml:100, pct:17},  // 約14g
+  // テキーラ
+  {id:26,emoji:'🥃',name:'テキーラ ショット',      ml:30,  pct:40},  // 日本標準1ショット=30ml 約10g
+];
+const DEFAULT_THRESHOLDS = [
+  {key:'horoyoi', label:'ほろ酔い',emoji:'😊',alcohol:20, color:'#f0c040'},
+  {key:'yopparai',label:'酔っ払い',emoji:'😄',alcohol:40, color:'#f07a30'},
+  {key:'meitei',  label:'酩酊',    emoji:'🤯',alcohol:60, color:'#e04060'},
+  {key:'deisui',  label:'泥酔',    emoji:'😵',alcohol:100,color:'#a020f0'},
+];
+const EMOJI_LIST=['🍺','🍻','🥂','🍷','🍸','🍹','🍶','🥃','🫗','🧃','🧋','🥤','🍑','🌸','🫐','🍓','🍊','🍋'];
+
+// ==============================
+//  STATE
+// ==============================
+function loadState(){try{return JSON.parse(localStorage.getItem('sakeMeterV5')||'{}')}catch{return{}}}
+function saveState(){localStorage.setItem('sakeMeterV5',JSON.stringify(S))}
+function getToday(){return new Date().toISOString().slice(0,10)}
+
+let S = loadState();
+if(!S.drinks)    S.drinks     = DEFAULT_DRINKS;
+if(!S.thresholds)S.thresholds = DEFAULT_THRESHOLDS;
+if(!S.logs)      S.logs       = {};
+if(!S.logs[getToday()]) S.logs[getToday()] = [];
+
+// ==============================
+//  HELPERS
+// ==============================
+const calcAlc = d => d.ml*(d.pct/100)*0.8;
+const getDayLogs  = date => S.logs[date]||[];
+const getDayTotal = date => getDayLogs(date).reduce((s,l)=>s+l.alcohol,0);
+const getMax = () => S.thresholds[S.thresholds.length-1].alcohol*1.2;
+function getStage(alc){
+  let cur={key:'sober',label:'シラフ',emoji:'😐',color:'#4caf7d',alcohol:0};
+  for(const t of S.thresholds){if(alc>=t.alcohol)cur=t;}
+  return cur;
+}
+function fmtTime(iso){
+  const t=new Date(iso);
+  return `${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}`;
+}
+function fmtDateLabel(ymd){
+  const[y,m,d]=ymd.split('-');
+  return `${parseInt(m)}月${parseInt(d)}日`;
+}
+
+// ==============================
+//  HOME
+// ==============================
+function renderHome(){
+  const d=new Date();
+  document.getElementById('dateDisplay').innerHTML=
+    `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}<br>${['日','月','火','水','木','金','土'][d.getDay()]}曜日`;
+
+  const total = getDayTotal(getToday());
+  const max   = getMax();
+  const pct   = Math.min(100,(total/max)*100);
+  const stage = getStage(total);
+
+  const fill = document.getElementById('gaugeFill');
+  fill.style.width = pct+'%';
+  fill.style.background = pct===0 ? 'var(--sober)'
+    : `linear-gradient(90deg,var(--sober),${stage.color})`;
+
+  document.getElementById('drunkStatus').textContent  = stage.label;
+  document.getElementById('drunkStatus').style.color  = stage.color;
+
+  const msgs = {
+    sober:    '今日はまだ飲んでいません',
+    horoyoi:  'いい感じになってきました 🎶',
+    yopparai: '⚠️ 健康リスクの目安を超えました（厚労省基準 40g）',
+    meitei:   '🚨 足元がふらつく危険な状態です',
+    deisui:   '🆘 危険！今すぐ飲むのを止めてください！',
+  };
+  document.getElementById('drunkSubtitle').textContent = msgs[stage.key]||'';
+  document.getElementById('totalAlcohol').textContent  = total.toFixed(1);
+  document.getElementById('totalDrinks').textContent   = getDayLogs(getToday()).length;
+  document.getElementById('percentFull').textContent   = Math.round(pct)+'%';
+
+  // stage chips
+  const sr = document.getElementById('stagesRow'); sr.innerHTML='';
+  const sw = [{key:'sober',label:'シラフ',emoji:'😐',color:'#4caf7d',alcohol:0},...S.thresholds];
+  for(const s of sw){
+    const c=document.createElement('div');
+    c.className='stage-chip';
+    c.style.color=s.color; c.style.borderColor=s.color;
+    if(s.key===stage.key) c.classList.add('active');
+    else if(total>s.alcohol) c.classList.add('passed');
+    c.innerHTML=`<span class="emo">${s.emoji}</span>${s.label}`;
+    sr.appendChild(c);
+  }
+
+  // drink buttons
+  const grid=document.getElementById('drinksGrid'); grid.innerHTML='';
+  for(const drink of S.drinks){
+    const btn=document.createElement('button');
+    btn.className='drink-btn';
+    btn.innerHTML=`<div class="drink-emoji">${drink.emoji}</div>
+      <div class="drink-name">${drink.name}</div>
+      <div class="drink-alcohol">🍶 ${calcAlc(drink).toFixed(1)}g</div>`;
+    btn.onclick=()=>{
+      addDrink(drink);
+      btn.classList.add('ripple');
+      setTimeout(()=>btn.classList.remove('ripple'),400);
+    };
+    grid.appendChild(btn);
+  }
+}
+
+// ==============================
+//  CALENDAR
+// ==============================
+let calY = new Date().getFullYear();
+let calM = new Date().getMonth();
+let calSel = getToday();
+
+function renderCalendar(){
+  const MONTHS=['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+  const DOWS  =['日','月','火','水','木','金','土'];
+  document.getElementById('calMonthLabel').textContent=`${calY}年 ${MONTHS[calM]}`;
+
+  const grid=document.getElementById('calGrid'); grid.innerHTML='';
+  DOWS.forEach(d=>{
+    const el=document.createElement('div');el.className='cal-dow';el.textContent=d;grid.appendChild(el);
+  });
+
+  const firstDow=new Date(calY,calM,1).getDay();
+  const totalDays=new Date(calY,calM+1,0).getDate();
+  const today=getToday();
+
+  for(let i=0;i<firstDow;i++){
+    const el=document.createElement('div');el.className='cal-day empty';grid.appendChild(el);
+  }
+  for(let d=1;d<=totalDays;d++){
+    const ymd=`${calY}-${String(calM+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const total=getDayTotal(ymd);
+    const stage=getStage(total);
+    const el=document.createElement('div');
+    el.className='cal-day';
+    if(ymd===today)  el.classList.add('today');
+    if(ymd===calSel) el.classList.add('selected');
+    el.innerHTML=`<span class="cal-day-num">${d}</span>`
+      +(total>0?`<div class="cal-day-dot" style="background:${stage.color}"></div>`:'');
+    el.onclick=()=>{calSel=ymd; renderCalendar();};
+    grid.appendChild(el);
+  }
+  renderCalDetail();
+}
+
+function renderCalDetail(){
+  const el  = document.getElementById('calDetail');
+  const logs= getDayLogs(calSel);
+  const total=getDayTotal(calSel);
+  const stage=getStage(total);
+  const pct =Math.min(100,(total/getMax())*100);
+  const isToday=calSel===getToday();
+
+  if(logs.length===0){
+    el.innerHTML=`<div class="cal-detail">
+      <div class="cal-detail-header">
+        <div class="cal-detail-date">${fmtDateLabel(calSel)}${isToday?' <span style="color:var(--accent)">（今日）</span>':''}</div>
+        <div style="font-size:12px;color:var(--text-muted)">記録なし</div>
+      </div>
+    </div>`;
+    return;
+  }
+
+  const rows=logs.map(l=>`
+    <div class="cal-log-row">
+      <span class="cal-log-time">${fmtTime(l.time)}</span>
+      <span>${l.emoji}</span>
+      <span class="cal-log-name">${l.name}</span>
+      <span class="cal-log-alc">+${l.alcohol.toFixed(1)}g</span>
+    </div>`).join('');
+
+  el.innerHTML=`<div class="cal-detail">
+    <div class="cal-detail-header">
+      <div class="cal-detail-date">${fmtDateLabel(calSel)}${isToday?' <span style="color:var(--accent)">（今日）</span>':''}</div>
+      <div class="cal-detail-status" style="color:${stage.color}">${stage.emoji} ${stage.label} &nbsp;${total.toFixed(1)}g</div>
+    </div>
+    <div class="cal-bar"><div class="cal-bar-fill" style="width:${pct}%;background:linear-gradient(90deg,var(--sober),${stage.color})"></div></div>
+    ${rows}
+  </div>`;
+}
+
+function calPrev(){calM--;if(calM<0){calM=11;calY--;}renderCalendar();}
+function calNext(){calM++;if(calM>11){calM=0;calY++;}renderCalendar();}
+
+// ==============================
+//  HISTORY
+// ==============================
+function renderHistory(){
+  const list=document.getElementById('historyList');
+  const logs=getDayLogs(getToday()).slice().reverse();
+  if(logs.length===0){
+    list.innerHTML='<div class="empty-state"><div class="emo">🥤</div>まだ記録がありません</div>';
+    return;
+  }
+  list.innerHTML='';
+  logs.forEach((log,i)=>{
+    const item=document.createElement('div');
+    item.className='history-item';
+    item.innerHTML=`<div class="history-emoji">${log.emoji}</div>
+      <div class="history-info">
+        <div class="history-name">${log.name}</div>
+        <div class="history-time">${fmtTime(log.time)}</div>
+      </div>
+      <div class="history-alcohol">+${log.alcohol.toFixed(1)}g</div>
+      <button class="history-delete" onclick="deleteLog(${logs.length-1-i})">✕</button>`;
+    list.appendChild(item);
+  });
+}
+
+// ==============================
+//  SETTINGS
+// ==============================
+let selectedEmoji = EMOJI_LIST[0];
+
+function renderSettings(){
+  // thresholds
+  const tc=document.getElementById('thresholdSettings'); tc.innerHTML='';
+  S.thresholds.forEach(t=>{
+    const row=document.createElement('div');
+    row.className='setting-row';
+    row.innerHTML=`<div style="font-size:18px">${t.emoji}</div>
+      <div class="setting-info">
+        <div class="setting-label" style="color:${t.color}">${t.label}</div>
+        <div class="setting-desc">この量以上で${t.label}判定</div>
+      </div>
+      <input class="setting-input" type="number" id="thresh-${t.key}" value="${t.alcohol}" min="1" max="300">
+      <span style="font-size:11px;color:var(--text-muted)">g</span>`;
+    tc.appendChild(row);
+  });
+
+  // drink editor
+  const de=document.getElementById('drinkEditor'); de.innerHTML='';
+  if(S.drinks.length===0){
+    de.innerHTML='<div style="padding:14px;font-size:12px;color:var(--text-muted);text-align:center">登録されたお酒はありません</div>';
+  } else {
+    S.drinks.forEach((d,i)=>{
+      const row=document.createElement('div');
+      row.className='drink-editor-row';
+      row.innerHTML=`<div class="drink-editor-emoji">${d.emoji}</div>
+        <div class="drink-editor-info">
+          <div class="drink-editor-name">${d.name}</div>
+          <div class="drink-editor-sub">${d.ml}ml / ${d.pct}% → <strong style="color:var(--accent)">${calcAlc(d).toFixed(1)}g</strong></div>
+        </div>
+        <input class="edit-input" type="number" id="drink-ml-${i}" value="${d.ml}" min="10" max="2000">
+        <span style="font-size:10px;color:var(--text-muted)">ml</span>
+        <button class="drink-del-btn" onclick="deleteDrink(${i})">🗑</button>`;
+      de.appendChild(row);
+    });
+  }
+
+  // emoji picker (only rebuild if form open)
+  const ep=document.getElementById('emojiPicker');
+  if(ep){ buildEmojiPicker(); }
+}
+
+function buildEmojiPicker(){
+  const ep=document.getElementById('emojiPicker');
+  if(!ep)return;
+  ep.innerHTML='';
+  EMOJI_LIST.forEach(e=>{
+    const btn=document.createElement('span');
+    btn.className='emoji-opt'+(e===selectedEmoji?' selected':'');
+    btn.textContent=e;
+    btn.onclick=()=>{
+      selectedEmoji=e;
+      document.querySelectorAll('.emoji-opt').forEach(b=>b.classList.remove('selected'));
+      btn.classList.add('selected');
+    };
+    ep.appendChild(btn);
+  });
+}
+
+// ==============================
+//  ACTIONS
+// ==============================
+function addDrink(drink){
+  const today=getToday();
+  S.logs[today].push({
+    id:Date.now(), name:drink.name, emoji:drink.emoji,
+    alcohol:calcAlc(drink), time:new Date().toISOString()
+  });
+  saveState(); renderHome(); renderHistory();
+  showToast(`${drink.emoji} ${drink.name} を追加しました`);
+}
+
+function deleteLog(index){
+  S.logs[getToday()].splice(index,1);
+  saveState(); renderHome(); renderHistory();
+}
+
+function confirmReset(){
+  if(confirm('今日の記録をすべてリセットしますか？')){
+    S.logs[getToday()]=[];
+    saveState(); renderHome(); renderHistory();
+    showToast('🗑 記録をリセットしました');
+  }
+}
+
+function saveSettings(){
+  S.thresholds.forEach(t=>{
+    const el=document.getElementById('thresh-'+t.key);
+    if(el) t.alcohol=parseFloat(el.value)||t.alcohol;
+  });
+  S.drinks.forEach((d,i)=>{
+    const el=document.getElementById('drink-ml-'+i);
+    if(el) d.ml=parseFloat(el.value)||d.ml;
+  });
+  saveState(); renderHome(); renderSettings();
+  showToast('✅ 設定を保存しました');
+}
+
+function deleteDrink(i){
+  if(confirm(`「${S.drinks[i].name}」を削除しますか？`)){
+    S.drinks.splice(i,1);
+    saveState(); renderHome(); renderSettings();
+    showToast('🗑 削除しました');
+  }
+}
+
+function toggleAddForm(){
+  const form=document.getElementById('addDrinkForm');
+  const opening=form.style.display==='none';
+  form.style.display=opening?'block':'none';
+  document.getElementById('toggleAddBtn').textContent=opening?'✕ キャンセル':'＋ 新しいお酒を追加';
+  if(opening) buildEmojiPicker();
+}
+
+function submitNewDrink(){
+  const name=document.getElementById('newDrinkName').value.trim();
+  const ml  =parseFloat(document.getElementById('newDrinkMl').value);
+  const pct =parseFloat(document.getElementById('newDrinkPct').value);
+  if(!name)          {showToast('⚠️ 名前を入力してください');return;}
+  if(!ml||ml<10)     {showToast('⚠️ 量(ml)を入力してください');return;}
+  if(!pct||pct<0.1)  {showToast('⚠️ 度数(%)を入力してください');return;}
+
+  S.drinks.push({id:Date.now(),emoji:selectedEmoji,name,ml,pct});
+  saveState();
+
+  // reset form
+  document.getElementById('newDrinkName').value='';
+  document.getElementById('newDrinkMl').value='';
+  document.getElementById('newDrinkPct').value='';
+  document.getElementById('addDrinkForm').style.display='none';
+  document.getElementById('toggleAddBtn').textContent='＋ 新しいお酒を追加';
+
+  renderHome(); renderSettings();
+  showToast(`${selectedEmoji} ${name} を追加しました！`);
+}
+
+// ==============================
+//  TABS
+// ==============================
+function showTab(tab){
+  ['home','calendar','history','settings'].forEach(t=>{
+    document.getElementById('tab-'+t).style.display = t===tab?'block':'none';
+  });
+  document.querySelectorAll('.nav-tab').forEach((el,i)=>{
+    el.classList.toggle('active',['home','calendar','history','settings'][i]===tab);
+  });
+  if(tab==='calendar'){ calY=new Date().getFullYear(); calM=new Date().getMonth(); renderCalendar(); }
+  if(tab==='history')  renderHistory();
+  if(tab==='settings') renderSettings();
+}
+
+// ==============================
+//  TOAST
+// ==============================
+function showToast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2200);
+}
+
+// ==============================
+//  INIT
+// ==============================
+renderHome();
+setInterval(()=>{
+  const t=getToday();
+  if(!S.logs[t]){S.logs[t]=[];saveState();renderHome();}
+},60000);
+</script>
+</body>
+</html>
